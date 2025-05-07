@@ -53,14 +53,39 @@ func parseLine(line string) (string, error) {
 		nums[i] = n
 	}
 
+	if isSafe(nums) {
+		return "safe", nil
+	}
+
+	for i := 0; i < len(nums); i++ {
+
+		tmp := append([]int{}, nums[:i]...)
+		tmp = append(tmp, nums[i+1:]...)
+		if isSafe(tmp) && len(tmp) >= 2 {
+			return "safe", nil
+		}
+	}
+	return "unsafe", nil
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func isSafe(nums []int) bool {
+	if len(nums) < 2 {
+		return false
+	}
+
 	direction := 0 // 0 = unknown, 1 = increasing, -1 = decreasing
 
 	for i := 1; i < len(nums); i++ {
 		diff := nums[i] - nums[i-1]
-
-		// 差值必须在 1 到 3 或 -1 到 -3 之间
 		if diff == 0 || abs(diff) > 3 {
-			return "unsafe", nil
+			return false
 		}
 
 		// 初始化方向
@@ -73,19 +98,11 @@ func parseLine(line string) (string, error) {
 		} else {
 			// 检查方向一致性
 			if (direction == 1 && diff < 0) || (direction == -1 && diff > 0) {
-				return "unsafe", nil
+				return false
 			}
 		}
 	}
-
-	return "safe", nil
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
+	return true
 }
 
 func main() {
