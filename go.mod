@@ -1,3 +1,3 @@
-module adventofcode/v22
+module adventofcode
 
 go 1.24.2

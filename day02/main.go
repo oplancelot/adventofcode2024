@@ -87,7 +87,7 @@ func isSafe(nums []int) bool {
 		if diff == 0 || abs(diff) > 3 {
 			return false
 		}
-
+		
 		// 初始化方向
 		if direction == 0 {
 			if diff > 0 {
