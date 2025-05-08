@@ -8,7 +8,25 @@ import (
 	"strings"
 )
 
-// readInput 读取并解析输入文件，返回两个整数切片
+type LineEvaluation int
+
+const (
+	EvalSafe LineEvaluation = iota
+	EvalUnsafe
+)
+
+func (e LineEvaluation) String() string {
+	switch e {
+	case EvalSafe:
+		return "safe"
+	case EvalUnsafe:
+		return "unsafe"
+	default:
+		return "unknown"
+	}
+}
+
+// readInput 读取并分析输入文件，返回 safe 和 unsafe 行的数量
 func readInput(filename string) (int, int, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -16,56 +34,58 @@ func readInput(filename string) (int, int, error) {
 	}
 	defer file.Close()
 
-	var safe, unsafe int
+	var safeCount, unsafeCount int
 	scanner := bufio.NewScanner(file)
+	lineNum := 0
 	for scanner.Scan() {
+		lineNum++
 		result, err := parseLine(scanner.Text())
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("line %d: %v\n", lineNum, err)
 			continue
 		}
-		if result == "safe" {
-			safe = safe + 1
+		if result == EvalSafe {
+			safeCount++
 		} else {
-			unsafe = unsafe + 1
+			unsafeCount++
 		}
-
 	}
 	if err := scanner.Err(); err != nil {
 		return 0, 0, err
 	}
-	return safe, unsafe, nil
+	return safeCount, unsafeCount, nil
 }
 
-// parseLine 解析每一行，返回左右两个整数
-func parseLine(line string) (string, error) {
+// parseLine 解析并评估一行数据
+func parseLine(line string) (LineEvaluation, error) {
 	fields := strings.Fields(line)
 	if len(fields) < 2 {
-		return "", fmt.Errorf("not enough numbers to evaluate")
+		return EvalUnsafe, fmt.Errorf("not enough numbers to evaluate")
 	}
 
 	nums := make([]int, len(fields))
 	for i, f := range fields {
 		n, err := strconv.Atoi(f)
 		if err != nil {
-			return "", fmt.Errorf("invalid number: %s", f)
+			return EvalUnsafe, fmt.Errorf("invalid number: %s", f)
 		}
 		nums[i] = n
 	}
 
 	if isSafe(nums) {
-		return "safe", nil
+		return EvalSafe, nil
 	}
 
+	// 尝试删除一个数字来看看是否变为安全
 	for i := 0; i < len(nums); i++ {
-
 		tmp := append([]int{}, nums[:i]...)
 		tmp = append(tmp, nums[i+1:]...)
-		if isSafe(tmp) && len(tmp) >= 2 {
-			return "safe", nil
+		if len(tmp) >= 2 && isSafe(tmp) {
+			return EvalSafe, nil
 		}
 	}
-	return "unsafe", nil
+
+	return EvalUnsafe, nil
 }
 
 func abs(x int) int {
@@ -75,20 +95,19 @@ func abs(x int) int {
 	return x
 }
 
+// isSafe 判断一个数列是否符合安全条件
 func isSafe(nums []int) bool {
 	if len(nums) < 2 {
 		return false
 	}
 
-	direction := 0 // 0 = unknown, 1 = increasing, -1 = decreasing
+	direction := 0 // 0 = 未确定, 1 = 递增, -1 = 递减
 
 	for i := 1; i < len(nums); i++ {
 		diff := nums[i] - nums[i-1]
 		if diff == 0 || abs(diff) > 3 {
 			return false
 		}
-		
-		// 初始化方向
 		if direction == 0 {
 			if diff > 0 {
 				direction = 1
@@ -96,7 +115,6 @@ func isSafe(nums []int) bool {
 				direction = -1
 			}
 		} else {
-			// 检查方向一致性
 			if (direction == 1 && diff < 0) || (direction == -1 && diff > 0) {
 				return false
 			}
@@ -113,5 +131,4 @@ func main() {
 		return
 	}
 	fmt.Println("safe:", safe, "unsafe:", unsafe)
-
 }
