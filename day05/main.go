@@ -8,16 +8,33 @@ import (
 	"strings"
 )
 
-// 读取输入
-func readInput(filename string) ([][2]int, [][]int, error) {
+// Rule represents a dependency rule where element A must come before element B
+type Rule struct {
+	A int
+	B int
+}
+
+// Update represents a sequence of integers that needs to be validated against rules
+type Update []int
+
+// InputData holds the parsed input data
+type InputData struct {
+	Rules   []Rule
+	Updates []Update
+}
+
+// ReadInput parses the input file and returns the rules and updates
+func ReadInput(filename string) (*InputData, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	var rules [][2]int
-	var updates [][]int
+	data := &InputData{
+		Rules:   []Rule{},
+		Updates: []Update{},
+	}
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -27,91 +44,114 @@ func readInput(filename string) ([][2]int, [][]int, error) {
 		}
 
 		if strings.Contains(line, "|") {
-			parts := strings.Split(line, "|")
-			if len(parts) != 2 {
-				fmt.Println("Invalid rule line:", line)
+			rule, err := parseRule(line)
+			if err != nil {
+				fmt.Printf("Warning: %v\n", err)
 				continue
 			}
-			a, err1 := strconv.Atoi(parts[0])
-			b, err2 := strconv.Atoi(parts[1])
-			if err1 != nil || err2 != nil {
-				fmt.Println("Invalid rule integers:", line)
-				continue
-			}
-			rules = append(rules, [2]int{a, b})
+			data.Rules = append(data.Rules, rule)
 		} else if strings.Contains(line, ",") {
-			parts := strings.Split(line, ",")
-			var update []int
-			for _, p := range parts {
-				num, err := strconv.Atoi(strings.TrimSpace(p))
-				if err != nil {
-					fmt.Println("Invalid update integer:", p)
-					continue
-				}
-				update = append(update, num)
+			update, err := parseUpdate(line)
+			if err != nil {
+				fmt.Printf("Warning: %v\n", err)
+				continue
 			}
-			updates = append(updates, update)
+			data.Updates = append(data.Updates, update)
 		}
 	}
+
 	if err := scanner.Err(); err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("error reading file: %w", err)
 	}
 
-	return rules, updates, nil
+	return data, nil
 }
 
-// 检查单个更新是否符合所有规则
-func isValidUpdate(update []int, rules [][2]int) bool {
+// parseRule parses a rule line in the format "A|B"
+func parseRule(line string) (Rule, error) {
+	parts := strings.Split(line, "|")
+	if len(parts) != 2 {
+		return Rule{}, fmt.Errorf("invalid rule format: %s", line)
+	}
+
+	a, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return Rule{}, fmt.Errorf("invalid rule integer A: %s", parts[0])
+	}
+
+	b, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return Rule{}, fmt.Errorf("invalid rule integer B: %s", parts[1])
+	}
+
+	return Rule{A: a, B: b}, nil
+}
+
+// parseUpdate parses an update line in the format "a, b, c, ..."
+func parseUpdate(line string) (Update, error) {
+	parts := strings.Split(line, ",")
+	update := make(Update, 0, len(parts))
+
+	for _, p := range parts {
+		num, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
+			return nil, fmt.Errorf("invalid update integer: %s", p)
+		}
+		update = append(update, num)
+	}
+
+	return update, nil
+}
+
+// IsValid checks if an update satisfies all rules
+func (u Update) IsValid(rules []Rule) bool {
 	positions := make(map[int]int)
-	for i, v := range update {
+	for i, v := range u {
 		positions[v] = i
 	}
 
 	for _, rule := range rules {
-		a, b := rule[0], rule[1]
-		posA, hasA := positions[a]
-		posB, hasB := positions[b]
+		posA, hasA := positions[rule.A]
+		posB, hasB := positions[rule.B]
 
-		// 只有在 A 和 B 都存在时，才检查是否 A 在 B 前面
-		if hasA && hasB {
-			if posA >= posB {
-				return false
-			}
+		// Only check if both elements exist in the update
+		if hasA && hasB && posA >= posB {
+			return false
 		}
 	}
 	return true
 }
 
-func topologicalSort(update []int, rules [][2]int) []int {
-	// 仅对 update 中的元素进行排序
+// TopologicalSort sorts the update according to the rules
+func (u Update) TopologicalSort(rules []Rule) Update {
+	// Create a graph representation
 	graph := make(map[int][]int)
 	inDegree := make(map[int]int)
 	inUpdate := make(map[int]bool)
 
-	// 先标记哪些元素在 update 中
-	for _, v := range update {
+	// Mark elements in the update
+	for _, v := range u {
 		inUpdate[v] = true
 		inDegree[v] = 0
 	}
 
-	// 构建图
+	// Build the graph based on rules
 	for _, rule := range rules {
-		a, b := rule[0], rule[1]
-		if inUpdate[a] && inUpdate[b] {
-			graph[a] = append(graph[a], b)
-			inDegree[b]++
+		if inUpdate[rule.A] && inUpdate[rule.B] {
+			graph[rule.A] = append(graph[rule.A], rule.B)
+			inDegree[rule.B]++
 		}
 	}
 
-	// 拓扑排序（Kahn 算法）
+	// Kahn's algorithm for topological sorting
 	queue := []int{}
-	for _, v := range update {
+	for _, v := range u {
 		if inDegree[v] == 0 {
 			queue = append(queue, v)
 		}
 	}
 
-	sorted := []int{}
+	sorted := make(Update, 0, len(u))
 	used := make(map[int]bool)
 
 	for len(queue) > 0 {
@@ -129,36 +169,47 @@ func topologicalSort(update []int, rules [][2]int) []int {
 		}
 	}
 
-	// 如果有遗漏节点（没有在拓扑图中参与），按原顺序补上
-	for _, v := range update {
+	// Add any remaining elements that weren't part of the dependency graph
+	for _, v := range u {
 		if !used[v] {
 			sorted = append(sorted, v)
 		}
 	}
+
 	return sorted
 }
 
-func processUpdates(updates [][]int, rules [][2]int) int {
+// GetMiddleElement returns the middle element of the update
+func (u Update) GetMiddleElement() int {
+	if len(u) == 0 {
+		return 0
+	}
+	return u[len(u)/2]
+}
+
+// ProcessUpdates processes all updates and returns the sum of middle elements of invalid updates
+func ProcessUpdates(data *InputData) int {
 	sum := 0
-	for _, update := range updates {
-		if !isValidUpdate(update, rules) {
-			sorted := topologicalSort(update, rules)
-			mid := sorted[len(sorted)/2]
-			sum += mid
+
+	for _, update := range data.Updates {
+		if !update.IsValid(data.Rules) {
+			sorted := update.TopologicalSort(data.Rules)
+			sum += sorted.GetMiddleElement()
 		}
 	}
+
 	return sum
 }
 
 func main() {
 	const inputFile = "input"
 
-	rules, updates, err := readInput(inputFile)
+	data, err := ReadInput(inputFile)
 	if err != nil {
-		fmt.Printf("Failed to read input (%s): %v\n", inputFile, err)
+		fmt.Printf("Error reading input: %v\n", err)
 		return
 	}
 
-	sums := processUpdates(updates, rules)
-	fmt.Println("sums of middle elements \n", sums)
+	result := ProcessUpdates(data)
+	fmt.Println("Sum of middle elements:", result)
 }
