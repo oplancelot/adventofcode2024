@@ -82,6 +82,74 @@ func isValidUpdate(update []int, rules [][2]int) bool {
 	return true
 }
 
+func topologicalSort(update []int, rules [][2]int) []int {
+	// 仅对 update 中的元素进行排序
+	graph := make(map[int][]int)
+	inDegree := make(map[int]int)
+	inUpdate := make(map[int]bool)
+
+	// 先标记哪些元素在 update 中
+	for _, v := range update {
+		inUpdate[v] = true
+		inDegree[v] = 0
+	}
+
+	// 构建图
+	for _, rule := range rules {
+		a, b := rule[0], rule[1]
+		if inUpdate[a] && inUpdate[b] {
+			graph[a] = append(graph[a], b)
+			inDegree[b]++
+		}
+	}
+
+	// 拓扑排序（Kahn 算法）
+	queue := []int{}
+	for _, v := range update {
+		if inDegree[v] == 0 {
+			queue = append(queue, v)
+		}
+	}
+
+	sorted := []int{}
+	used := make(map[int]bool)
+
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+
+		sorted = append(sorted, node)
+		used[node] = true
+
+		for _, neighbor := range graph[node] {
+			inDegree[neighbor]--
+			if inDegree[neighbor] == 0 {
+				queue = append(queue, neighbor)
+			}
+		}
+	}
+
+	// 如果有遗漏节点（没有在拓扑图中参与），按原顺序补上
+	for _, v := range update {
+		if !used[v] {
+			sorted = append(sorted, v)
+		}
+	}
+	return sorted
+}
+
+func processUpdates(updates [][]int, rules [][2]int) int {
+	sum := 0
+	for _, update := range updates {
+		if !isValidUpdate(update, rules) {
+			sorted := topologicalSort(update, rules)
+			mid := sorted[len(sorted)/2]
+			sum += mid
+		}
+	}
+	return sum
+}
+
 func main() {
 	const inputFile = "input"
 
@@ -91,19 +159,6 @@ func main() {
 		return
 	}
 
-	total := 0
-	for _, update := range updates {
-		if isValidUpdate(update, rules) {
-			// 打印符合规则的 update
-			fmt.Printf("Valid update: %v\n", update)
-
-			// 取中间页码并累加
-			if len(update) > 0 {
-				mid := update[len(update)/2]
-				total += mid
-			}
-		}
-	}
-
-	fmt.Printf("Sum of middle page numbers from valid updates: %d\n", total)
+	sums := processUpdates(updates, rules)
+	fmt.Println("sums of middle elements \n", sums)
 }
