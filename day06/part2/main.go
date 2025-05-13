@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -110,10 +111,11 @@ func checkLoop(grid [][]string, startPos Position, startDir string, maxSteps int
 
 	return false // 达到最大步数仍未找到循环
 }
+
 // countObstaclePositions 计算可以添加障碍物使警卫进入循环的位置数量
 func countObstaclePositions(grid [][]string, guardPos Position, guardDir string) int {
 	count := 0
-	maxSteps := 10000 // 设置一个合理的最大步数限制
+	maxSteps := len(grid) * len(grid[0]) * 4 // 根据网格大小设置合理的步数限制
 
 	// 创建一个网格副本
 	copyGrid := make([][]string, len(grid))
@@ -147,11 +149,17 @@ func countObstaclePositions(grid [][]string, guardPos Position, guardDir string)
 }
 
 func main() {
-	const inputFile = "input"
+	const inputFile = "input" // 保持原样
 	grid, guardPos, guardDir, err := readInput(inputFile)
 	if err != nil {
-		fmt.Printf("Failed to read input (%s): %v\n", inputFile, err)
-		return
+		// 如果读取失败，尝试在当前目录下查找
+		currentDir, _ := os.Getwd()
+		fullPath := filepath.Join(currentDir, "day06/part2", inputFile)
+		grid, guardPos, guardDir, err = readInput(fullPath)
+		if err != nil {
+			fmt.Printf("Failed to read input (%s): %v\n", inputFile, err)
+			return
+		}
 	}
 
 	// 计算可以添加障碍物使警卫进入循环的位置数量
