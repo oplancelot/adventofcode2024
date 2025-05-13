@@ -6,57 +6,35 @@ import (
 	"strings"
 )
 
-// Direction represents the four cardinal directions
-type Direction int
-
-const (
-	Up Direction = iota
-	Right
-	Down
-	Left
-)
-
-// Position represents a coordinate on the grid
+// Position 表示网格中的一个位置
 type Position struct {
 	row, col int
 }
 
-// readInput reads the input file and builds the character grid.
-func readInput(filename string) ([][]string, Position, Direction, error) {
+// readInput 读取输入文件并构建字符网格。
+func readInput(filename string) ([][]string, Position, string, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, Position{}, 0, err
+		return nil, Position{}, "", err
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	grid := make([][]string, len(lines))
-	
+
+	// 查找警卫的初始位置和方向
 	var guardPos Position
-	var guardDir Direction
+	var guardDir string
 
 	for i, line := range lines {
-		line = strings.TrimSuffix(line, "\r") // Handle potential CR characters from Windows-style line endings
+		line = strings.TrimSuffix(line, "\r") // 处理Windows风格的行结束符
 		grid[i] = strings.Split(line, "")
-		
-		// Find the guard's starting position and direction
+
+		// 查找警卫的位置
 		for j, char := range grid[i] {
-			switch char {
-			case "^":
+			if char == "^" || char == ">" || char == "v" || char == "<" {
 				guardPos = Position{i, j}
-				guardDir = Up
-				grid[i][j] = "." // Replace with empty space for tracking
-			case ">":
-				guardPos = Position{i, j}
-				guardDir = Right
-				grid[i][j] = "."
-			case "v":
-				guardPos = Position{i, j}
-				guardDir = Down
-				grid[i][j] = "."
-			case "<":
-				guardPos = Position{i, j}
-				guardDir = Left
-				grid[i][j] = "."
+				guardDir = char
+				// 不替换原始网格中的字符，保留警卫标记
 			}
 		}
 	}
@@ -64,63 +42,61 @@ func readInput(filename string) ([][]string, Position, Direction, error) {
 	return grid, guardPos, guardDir, nil
 }
 
-// isInBounds checks if a position is within the grid boundaries
-func isInBounds(grid [][]string, pos Position) bool {
-	return pos.row >= 0 && pos.row < len(grid) && pos.col >= 0 && pos.col < len(grid[0])
-}
-
-// getNextPosition returns the position in front of the current position based on direction
-func getNextPosition(pos Position, dir Direction) Position {
-	switch dir {
-	case Up:
-		return Position{pos.row - 1, pos.col}
-	case Right:
-		return Position{pos.row, pos.col + 1}
-	case Down:
-		return Position{pos.row + 1, pos.col}
-	case Left:
-		return Position{pos.row, pos.col - 1}
-	}
-	return pos // Should never happen
-}
-
-// turnRight returns the direction after turning right 90 degrees
-func turnRight(dir Direction) Direction {
-	return (dir + 1) % 4
-}
-
-// findDistinctPositions counts the number of distinct positions visited by the guard
-func findDistinctPositions(grid [][]string, startPos Position, startDir Direction) int {
-	// Create a map to track visited positions
+// findDistinctPositions 计算警卫访问的不同位置数量。
+func findDistinctPositions(grid [][]string, startPos Position, startDir string) int {
+	// 使用map记录已访问的位置
 	visited := make(map[Position]bool)
-	
-	// Start with the guard's initial position
+
+	// 当前位置和方向
 	pos := startPos
 	dir := startDir
-	
-	// Mark the starting position as visited
+
+	// 标记起始位置为已访问
 	visited[pos] = true
-	
-	// Continue until the guard leaves the mapped area
+
+	// 继续直到警卫离开地图区域
 	for {
-		// Check what's in front
-		nextPos := getNextPosition(pos, dir)
-		
-		// If out of bounds, the guard has left the area
-		if !isInBounds(grid, nextPos) {
+		var nextPos Position
+
+		// 确定前方位置
+		switch dir {
+		case "^":
+			nextPos = Position{pos.row - 1, pos.col}
+		case ">":
+			nextPos = Position{pos.row, pos.col + 1}
+		case "v":
+			nextPos = Position{pos.row + 1, pos.col}
+		case "<":
+			nextPos = Position{pos.row, pos.col - 1}
+		}
+
+		// 检查是否离开地图
+		if nextPos.row < 0 || nextPos.row >= len(grid) || nextPos.col < 0 || nextPos.col >= len(grid[0]) {
 			break
 		}
-		
-		// If there's an obstacle in front, turn right
-		if grid[nextPos.row][nextPos.col] == "#" {
-			dir = turnRight(dir)
+
+		// 获取前方的内容
+		nextCell := grid[nextPos.row][nextPos.col]
+
+		// 如果前方有障碍物，向右转
+		if nextCell == "#" {
+			switch dir {
+			case "^":
+				dir = ">"
+			case ">":
+				dir = "v"
+			case "v":
+				dir = "<"
+			case "<":
+				dir = "^"
+			}
 		} else {
-			// Otherwise, move forward
+			// 否则，向前移动
 			pos = nextPos
 			visited[pos] = true
 		}
 	}
-	
+
 	return len(visited)
 }
 
@@ -132,6 +108,6 @@ func main() {
 		return
 	}
 
-	distinctPositions := findDistinctPositions(grid, guardPos, guardDir)
-	fmt.Printf("Number of distinct positions visited by the guard: %d\n", distinctPositions)
+	totalDistinctPositions := findDistinctPositions(grid, guardPos, guardDir)
+	fmt.Printf("Number of distinct positions visited by the guard: %d\n", totalDistinctPositions)
 }
