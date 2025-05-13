@@ -2,218 +2,159 @@ package main
 
 import (
 	"fmt"
-	"image"
-	"image/color"
-	"image/gif"
 	"os"
 	"strings"
-
-	"github.com/fogleman/gg"
 )
 
+// Position 表示网格中的一个位置
 type Position struct {
 	row, col int
 }
 
-type State struct {
-	pos Position
-	dir string
-}
-
-const (
-	cellSize   = 20
-	frameDelay = 5 // 单位是 10ms，5 表示每帧 50ms
-)
-
+// readInput 读取输入文件并构建字符网格。
 func readInput(filename string) ([][]string, Position, string, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, Position{}, "", err
 	}
+
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	grid := make([][]string, len(lines))
 
+	// 查找警卫的初始位置和方向
 	var guardPos Position
 	var guardDir string
 
 	for i, line := range lines {
-		line = strings.TrimSuffix(line, "\r")
+		line = strings.TrimSuffix(line, "\r") // 处理Windows风格的行结束符
 		grid[i] = strings.Split(line, "")
+
+		// 查找警卫的位置
 		for j, char := range grid[i] {
 			if char == "^" || char == ">" || char == "v" || char == "<" {
 				guardPos = Position{i, j}
 				guardDir = char
-				grid[i][j] = "."
+				// 不替换原始网格中的字符，保留警卫标记
 			}
 		}
 	}
+
 	return grid, guardPos, guardDir, nil
 }
 
-func getNextPosition(pos Position, dir string) Position {
-	switch dir {
-	case "^":
-		return Position{pos.row - 1, pos.col}
-	case ">":
-		return Position{pos.row, pos.col + 1}
-	case "v":
-		return Position{pos.row + 1, pos.col}
-	case "<":
-		return Position{pos.row, pos.col - 1}
+// checkLoop 检查警卫是否会进入循环
+func checkLoop(grid [][]string, startPos Position, startDir string, maxSteps int) bool {
+	// 记录警卫的状态 (位置+方向)
+	type State struct {
+		pos Position
+		dir string
 	}
-	return pos
-}
 
-func turnRight(dir string) string {
-	switch dir {
-	case "^":
-		return ">"
-	case ">":
-		return "v"
-	case "v":
-		return "<"
-	case "<":
-		return "^"
-	}
-	return dir
-}
+	visited := make(map[State]int) // 状态 -> 步数
 
-func isInBounds(grid [][]string, pos Position) bool {
-	return pos.row >= 0 && pos.row < len(grid) && pos.col >= 0 && pos.col < len(grid[0])
-}
-
-// 追踪路径并返回每一步状态
-func tracePath(grid [][]string, startPos Position, startDir string) []State {
-	var path []State
+	// 当前位置和方向
 	pos := startPos
 	dir := startDir
-	path = append(path, State{pos, dir})
+	steps := 0
 
-	visited := make(map[Position]bool)
-	visited[pos] = true
-
-	for {
-		next := getNextPosition(pos, dir)
-		if !isInBounds(grid, next) {
-			break
+	for steps < maxSteps {
+		// 记录当前状态
+		currentState := State{pos, dir}
+		if _, exists := visited[currentState]; exists {
+			// 找到循环
+			return true
 		}
-		if grid[next.row][next.col] == "#" {
-			dir = turnRight(dir)
+		visited[currentState] = steps
+
+		var nextPos Position
+
+		// 确定前方位置
+		switch dir {
+		case "^":
+			nextPos = Position{pos.row - 1, pos.col}
+		case ">":
+			nextPos = Position{pos.row, pos.col + 1}
+		case "v":
+			nextPos = Position{pos.row + 1, pos.col}
+		case "<":
+			nextPos = Position{pos.row, pos.col - 1}
+		}
+
+		// 检查是否离开地图
+		if nextPos.row < 0 || nextPos.row >= len(grid) || nextPos.col < 0 || nextPos.col >= len(grid[0]) {
+			return false // 离开地图，没有循环
+		}
+
+		// 获取前方的内容
+		nextCell := grid[nextPos.row][nextPos.col]
+
+		// 如果前方有障碍物，向右转
+		if nextCell == "#" {
+			switch dir {
+			case "^":
+				dir = ">"
+			case ">":
+				dir = "v"
+			case "v":
+				dir = "<"
+			case "<":
+				dir = "^"
+			}
 		} else {
-			pos = next
-			if visited[pos] {
-				break // 避免循环（也可选用 step limit）
-			}
-			visited[pos] = true
+			// 否则，向前移动
+			pos = nextPos
 		}
-		path = append(path, State{pos, dir})
+
+		steps++
 	}
-	return path
+
+	return false // 达到最大步数仍未找到循环
 }
+// countObstaclePositions 计算可以添加障碍物使警卫进入循环的位置数量
+func countObstaclePositions(grid [][]string, guardPos Position, guardDir string) int {
+	count := 0
+	maxSteps := 10000 // 设置一个合理的最大步数限制
 
-// 渲染单帧
-func renderFrame(grid [][]string, path []Position, guardPos Position) *gg.Context {
-	rows := len(grid)
-	cols := len(grid[0])
-	dc := gg.NewContext(cols*cellSize, rows*cellSize)
+	// 创建一个网格副本
+	copyGrid := make([][]string, len(grid))
+	for i := range grid {
+		copyGrid[i] = make([]string, len(grid[i]))
+		copy(copyGrid[i], grid[i])
+	}
 
-	// 背景
-	dc.SetColor(color.White)
-	dc.Clear()
-
-	// 画网格
-	for r := 0; r < rows; r++ {
-		for c := 0; c < cols; c++ {
-			x := float64(c * cellSize)
-			y := float64(r * cellSize)
-
-			switch grid[r][c] {
-			case "#":
-				dc.SetColor(color.Black)
-			default:
-				dc.SetColor(color.RGBA{230, 230, 230, 255})
+	// 尝试在每个空位置添加障碍物
+	for i := 0; i < len(grid); i++ {
+		for j := 0; j < len(grid[i]); j++ {
+			// 跳过已有障碍物或警卫的位置
+			if grid[i][j] == "#" || (i == guardPos.row && j == guardPos.col) {
+				continue
 			}
-			dc.DrawRectangle(x, y, cellSize, cellSize)
-			dc.Fill()
+
+			// 添加障碍物
+			copyGrid[i][j] = "#"
+
+			// 检查是否会形成循环
+			if checkLoop(copyGrid, guardPos, guardDir, maxSteps) {
+				count++
+			}
+
+			// 恢复原始状态
+			copyGrid[i][j] = grid[i][j]
 		}
 	}
 
-	// 画路径轨迹
-	dc.SetColor(color.RGBA{0, 128, 255, 255})
-	for _, p := range path {
-		x := float64(p.col * cellSize)
-		y := float64(p.row * cellSize)
-		dc.DrawCircle(x+cellSize/2, y+cellSize/2, cellSize/4)
-		dc.Fill()
-	}
-
-	// 画警卫当前位置
-	dc.SetColor(color.RGBA{255, 0, 0, 255})
-	x := float64(guardPos.col * cellSize)
-	y := float64(guardPos.row * cellSize)
-	dc.DrawCircle(x+cellSize/2, y+cellSize/2, float64(cellSize/2))
-	dc.Fill()
-
-	return dc
-}
-
-func saveGIF(frames []*gg.Context, filename string) error {
-	var images []*image.Paletted
-	var delays []int
-
-	for _, dc := range frames {
-		img := dc.Image()
-		palettedImg := image.NewPaletted(img.Bounds(), []color.Color{
-			color.White, color.Black,
-			color.RGBA{230, 230, 230, 255},
-			color.RGBA{0, 128, 255, 255},
-			color.RGBA{255, 0, 0, 255},
-		})
-		// Draw to paletted
-		for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
-			for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
-				palettedImg.Set(x, y, img.At(x, y))
-			}
-		}
-		images = append(images, palettedImg)
-		delays = append(delays, frameDelay)
-	}
-
-	anim := gif.GIF{
-		Image: images,
-		Delay: delays,
-	}
-	outFile, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
-
-	return gif.EncodeAll(outFile, &anim)
+	return count
 }
 
 func main() {
-	grid, guardPos, guardDir, err := readInput("input")
+	const inputFile = "input"
+	grid, guardPos, guardDir, err := readInput(inputFile)
 	if err != nil {
-		fmt.Println("Failed to read input:", err)
+		fmt.Printf("Failed to read input (%s): %v\n", inputFile, err)
 		return
 	}
 
-	pathStates := tracePath(grid, guardPos, guardDir)
-
-	var frames []*gg.Context
-	var pathTrace []Position
-	for _, state := range pathStates {
-		pathTrace = append(pathTrace, state.pos)
-		frame := renderFrame(grid, pathTrace, state.pos)
-		frames = append(frames, frame)
-	}
-
-	err = saveGIF(frames, "guard_path.gif")
-	if err != nil {
-		fmt.Println("Failed to save GIF:", err)
-		return
-	}
-
-	fmt.Printf("GIF saved as guard_path.gif with %d frames.\n", len(frames))
+	// 计算可以添加障碍物使警卫进入循环的位置数量
+	obstacleCount := countObstaclePositions(grid, guardPos, guardDir)
+	fmt.Printf("Number of positions where adding an obstacle creates a loop: %d\n", obstacleCount)
 }
