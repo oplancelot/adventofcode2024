@@ -13,12 +13,6 @@ const (
 	changeSeqLength = 4    // The monkey looks for a sequence of 4 changes
 )
 
-// buyerData holds the generated price and change history for a single buyer.
-type buyerData struct {
-	prices  []int
-	changes []int
-}
-
 // nextSecret generates the next secret number in the sequence (reused from Part 1).
 func nextSecret(secret int) int {
 	res1 := secret * 64
@@ -30,75 +24,58 @@ func nextSecret(secret int) int {
 	return secret
 }
 
-// generateBuyerHistory creates the full list of prices and changes for one buyer.
-func generateBuyerHistory(initialSecret int) buyerData {
-	prices := make([]int, numNewSecrets+1)
-	changes := make([]int, numNewSecrets)
-
-	currentSecret := initialSecret
-	prices[0] = currentSecret % 10
-
-	for i := 1; i <= numNewSecrets; i++ {
-		currentSecret = nextSecret(currentSecret)
-		prices[i] = currentSecret % 10
-		changes[i-1] = prices[i] - prices[i-1]
-	}
-
-	return buyerData{prices: prices, changes: changes}
-}
-
-// solve calculates the maximum number of bananas obtainable.
+// solve calculates the maximum number of bananas obtainable using an optimized approach.
 func solve(input string) int {
 	lines := strings.Split(strings.TrimSpace(input), "\n")
-	var buyersHistory []buyerData
+
+	// This map will act as a global scoreboard.
+	// Key: a 4-change sequence. Value: total bananas earned for this sequence.
+	sequenceScores := make(map[[changeSeqLength]int]int)
+
+	// Process each buyer one by one.
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
 		initialSecret, _ := strconv.Atoi(line)
-		buyersHistory = append(buyersHistory, generateBuyerHistory(initialSecret))
-	}
 
-	// Collect all unique 4-change sequences that occurred.
-	// We use a map where the key is a 4-integer array to find unique sequences.
-	candidateSequences := make(map[[changeSeqLength]int]bool)
-	for _, buyer := range buyersHistory {
-		for i := 0; i <= len(buyer.changes)-changeSeqLength; i++ {
+		// --- Generate this buyer's history ---
+		prices := make([]int, numNewSecrets+1)
+		changes := make([]int, numNewSecrets)
+		currentSecret := initialSecret
+		prices[0] = currentSecret % 10
+
+		for i := 1; i <= numNewSecrets; i++ {
+			currentSecret = nextSecret(currentSecret)
+			prices[i] = currentSecret % 10
+			changes[i-1] = prices[i] - prices[i-1]
+		}
+
+		// --- Find first sale for each unique sequence for THIS buyer ---
+		// Use a temporary map to ensure we only record the FIRST sale per sequence for this buyer.
+		firstSaleForBuyer := make(map[[changeSeqLength]int]int)
+		for i := 0; i <= len(changes)-changeSeqLength; i++ {
 			var seq [changeSeqLength]int
-			copy(seq[:], buyer.changes[i:i+changeSeqLength])
-			candidateSequences[seq] = true
+			copy(seq[:], changes[i:i+changeSeqLength])
+
+			// If we haven't seen this sequence for this buyer yet, record the sale.
+			if _, ok := firstSaleForBuyer[seq]; !ok {
+				priceAtSale := prices[i+changeSeqLength]
+				firstSaleForBuyer[seq] = priceAtSale
+			}
+		}
+
+		// --- Add this buyer's contributions to the global scoreboard ---
+		for seq, price := range firstSaleForBuyer {
+			sequenceScores[seq] += price
 		}
 	}
 
+	// Find the highest score on the global scoreboard.
 	maxBananas := 0
-
-	// Test each candidate sequence to see how many bananas it yields.
-	for seq := range candidateSequences {
-		currentBananas := 0
-		for _, buyer := range buyersHistory {
-			// Find the first time this sequence occurs for the buyer.
-			for i := 0; i <= len(buyer.changes)-changeSeqLength; i++ {
-				match := true
-				for j := 0; j < changeSeqLength; j++ {
-					if buyer.changes[i+j] != seq[j] {
-						match = false
-						break
-					}
-				}
-
-				if match {
-					// Sale is made at the price corresponding to the end of the sequence.
-					// The change at index `i+3` is `price[i+4] - price[i+3]`.
-					// So, the price of the sale is `price[i+4]`.
-					priceAtSale := buyer.prices[i+changeSeqLength]
-					currentBananas += priceAtSale
-					goto nextBuyer // Move to the next buyer after the first sale.
-				}
-			}
-		nextBuyer:
-		}
-		if currentBananas > maxBananas {
-			maxBananas = currentBananas
+	for _, score := range sequenceScores {
+		if score > maxBananas {
+			maxBananas = score
 		}
 	}
 
